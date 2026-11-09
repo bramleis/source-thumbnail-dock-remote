@@ -1,7 +1,6 @@
 package id.kominfo.sorong.sourcethumbnailremote;
 
 import android.app.*;import android.os.*;import android.graphics.Color;import android.view.*;import android.widget.*;import android.text.InputType;import android.content.*;
-import androidx.annotation.Nullable;
 import com.google.gson.*;import org.java_websocket.client.WebSocketClient;import org.java_websocket.handshake.ServerHandshake;
 import com.google.zxing.integration.android.*;
 import java.net.*;import java.nio.charset.StandardCharsets;import java.security.MessageDigest;import java.util.*;
@@ -84,7 +83,7 @@ public class MainActivity extends Activity {
   void showSources(JsonObject r,String sceneName){runOnUiThread(()->{sourcesBox.removeAllViews();TextView heading=label("SOURCE PADA SCENE: "+sceneName,15);heading.setTypeface(null,1);sourcesBox.addView(heading);JsonArray a=r.getAsJsonArray("sceneItems");for(JsonElement el:a){JsonObject it=el.getAsJsonObject();String name=it.get("sourceName").getAsString();int id=it.get("sceneItemId").getAsInt();boolean enabled=it.get("sceneItemEnabled").getAsBoolean();CheckBox cb=new CheckBox(this);cb.setText(name);cb.setTextColor(DARK);cb.setChecked(enabled);cb.setOnCheckedChangeListener((v,on)->{JsonObject d=new JsonObject();d.addProperty("sceneName",sceneName);d.addProperty("sceneItemId",id);d.addProperty("sceneItemEnabled",on);send("SetSceneItemEnabled",d);});sourcesBox.addView(cb);}if(a.size()==0)sourcesBox.addView(label("Tidak ada Source pada Scene ini.",13));});}
   String sha256(String s)throws Exception{MessageDigest md=MessageDigest.getInstance("SHA-256");return Base64.getEncoder().encodeToString(md.digest(s.getBytes(StandardCharsets.UTF_8)));}
   byte[] hexBytes(String b64){return Base64.getDecoder().decode(b64);}
-  @Override protected void onActivityResult(int requestCode,int resultCode,@Nullable Intent data){IntentResult result=IntentIntegrator.parseActivityResult(requestCode,resultCode,data);if(result!=null&&result.getContents()!=null){parseQr(result.getContents());return;}super.onActivityResult(requestCode,resultCode,data);}
+  @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){IntentResult result=IntentIntegrator.parseActivityResult(requestCode,resultCode,data);if(result!=null&&result.getContents()!=null){parseQr(result.getContents());return;}super.onActivityResult(requestCode,resultCode,data);}
   void parseQr(String raw){try{String s=raw.trim();if(s.startsWith("{")){JsonObject j=JsonParser.parseString(s).getAsJsonObject();if(j.has("host"))host.setText(j.get("host").getAsString());if(j.has("port"))port.setText(j.get("port").getAsString());if(j.has("password"))password.setText(j.get("password").getAsString());}
     else {if(s.startsWith("ws://"))s=s.substring(5);else if(s.startsWith("obsws://"))s=s.substring(8);String authority=s.split("/",2)[0];String[] hp=authority.split(":");host.setText(hp[0]);if(hp.length>1)port.setText(hp[1]);if(s.contains("password=")){String pw=s.substring(s.indexOf("password=")+9).split("[& ]",2)[0];password.setText(URLDecoder.decode(pw,"UTF-8"));}}toast("Data QR dimasukkan. Tekan Hubungkan.");}catch(Exception e){toast("Format QR belum dikenali. Masukkan IP dan password secara manual.");}}
   void toast(String s){Toast.makeText(this,s,Toast.LENGTH_LONG).show();}
