@@ -1,7 +1,7 @@
 package id.kominfo.sorong.sourcethumbnailremote;
 
 import android.app.*;import android.os.*;import android.graphics.Color;import android.view.*;import android.widget.*;import android.text.InputType;import android.content.*;
-import androidx.annotation.Nullable;
+import android.annotation.Nullable;
 import com.google.gson.*;import org.java_websocket.client.WebSocketClient;import org.java_websocket.handshake.ServerHandshake;
 import com.google.zxing.integration.android.*;
 import java.net.*;import java.nio.charset.StandardCharsets;import java.security.MessageDigest;import java.util.*;
