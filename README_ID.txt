@@ -37,3 +37,12 @@ PERBAIKAN V1.0.1
 CATATAN
 Build APK harus dilakukan melalui GitHub Actions workflow "Build Android APK".
 File APK lama tidak berubah otomatis saat kode sumber diperbarui.
+
+
+PERBAIKAN V1.0.2 - SOURCE SCENE BINDING
+- Setiap permintaan GetSceneItemList sekarang membawa identitas Scene yang diminta.
+- Setiap tombol ON/OFF menggunakan nama Scene yang sama dengan daftar Source yang ditampilkan, bukan mengandalkan pilihan Scene global yang dapat berubah.
+- Nama Scene ditampilkan di atas daftar Source agar pengguna dapat memeriksa Scene yang sedang dikendalikan.
+- Fungsi Program dan Preview tetap dipertahankan.
+- Ini adalah perbaikan kode sumber; APK harus dibangun ulang melalui GitHub Actions.
+- Belum dapat dinyatakan lulus uji OBS fisik sebelum diuji pada komputer OBS pengguna.
