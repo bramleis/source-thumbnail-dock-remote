@@ -43,3 +43,14 @@ app/build/outputs/apk/debug/app-debug.apk
 
 Versi aplikasi: 2.0.0
 Application ID: id.kominfo.sorong.sourcethumbnailremote
+
+
+CATATAN VERSI 2.0.1 - PERBAIKAN BEBAN SCREENSHOT
+- Pengambilan screenshot sekarang berjalan satu per satu.
+- Ukuran screenshot diperkecil menjadi 240x135 dengan kompresi 40.
+- Preview dan Program diprioritaskan; thumbnail Source diperbarui bergiliran (maksimal satu Source per 15 detik).
+- Interval pemantauan monitor menjadi 10 detik.
+- Timeout screenshot sekarang membuang request tertunda yang kedaluwarsa sebelum antrean dilanjutkan.
+- Perintah kontrol non-screenshot tetap dikirim langsung melalui OBS WebSocket.
+
+CATATAN PENGUJIAN: proyek ini belum diuji langsung pada OBS pengguna. QR scanner belum dinyatakan diperbaiki; bila masih crash, diperlukan crash log Android untuk diagnosis. Jangan gunakan saat siaran penting sebelum pengujian terkontrol.
