@@ -51,7 +51,7 @@ public class MainActivity extends Activity {
     private final Map<String,SeekBar> volumeSliders=new HashMap<>();
     private final Map<String,Button> muteButtons=new HashMap<>();
     private final List<String> audioInputs=new ArrayList<>();
-    private final Queue<ScreenshotJob> screenshotQueue=new ArrayDeque<>();
+    private final Deque<ScreenshotJob> screenshotQueue=new ArrayDeque<>();
     private Runnable pollRunnable;
     private Runnable keepAliveRunnable;
     private long lastSocketMessage=0;
