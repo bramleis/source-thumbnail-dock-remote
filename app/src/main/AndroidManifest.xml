@@ -1,17 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
-
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
-
     <application
         android:theme="@style/AppTheme"
         android:label="Komsos Thumbnail Remote"
         android:usesCleartextTraffic="true"
         android:allowBackup="false">
-
         <activity
             android:name="id.kominfo.sorong.sourcethumbnailremote.MainActivity"
             android:exported="true"
@@ -21,15 +17,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- QR scanner from ZXing; override conflicting defaults from the library manifest -->
-        <activity
-            android:name="com.journeyapps.barcodescanner.CaptureActivity"
-            android:exported="false"
-            android:screenOrientation="fullSensor"
-            android:stateNotNeeded="true"
-            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
-            android:windowSoftInputMode="stateAlwaysHidden"
-            tools:replace="android:screenOrientation,android:theme" />
+        <!-- CaptureActivity sengaja tidak dideklarasikan ulang.
+             Gunakan deklarasi dan tema bawaan library ZXing agar scanner tidak crash. -->
     </application>
 </manifest>
