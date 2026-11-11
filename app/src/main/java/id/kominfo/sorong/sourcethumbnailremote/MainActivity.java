@@ -52,7 +52,9 @@ public class MainActivity extends Activity {
     private final Map<String,Button> muteButtons=new HashMap<>();
     private final List<String> audioInputs=new ArrayList<>();
     private final Queue<ScreenshotJob> screenshotQueue=new ArrayDeque<>();
-    private Runnable pollRunnable;\n    private Runnable keepAliveRunnable;\n    private long lastSocketMessage=0;
+    private Runnable pollRunnable;
+    private Runnable keepAliveRunnable;
+    private long lastSocketMessage=0;
     private boolean screenshotBusy=false;
     private String activeScreenshotRequestId=null;
     private Runnable screenshotTimeout=null;
