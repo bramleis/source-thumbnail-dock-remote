@@ -18,7 +18,6 @@ import android.widget.*;
 import android.text.InputType;
 import android.content.Intent;
 
-import androidx.annotation.Nullable;
 
 import com.google.gson.*;
 import com.google.zxing.integration.android.IntentIntegrator;
@@ -382,7 +381,7 @@ public class MainActivity extends Activity {
             toast("Data QR dimasukkan. Tekan HUBUNGKAN.");
         }catch(Exception e){toast("Format QR tidak dikenali; isi IP dan password secara manual.");}
     }
-    @Override protected void onActivityResult(int requestCode,int resultCode,@Nullable Intent data){
+    @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
         IntentResult result=IntentIntegrator.parseActivityResult(requestCode,resultCode,data);
         if(result!=null&&result.getContents()!=null){parseQr(result.getContents());return;}
         super.onActivityResult(requestCode,resultCode,data);
