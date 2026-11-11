@@ -18,6 +18,7 @@ import android.widget.*;
 import android.text.InputType;
 import android.content.Intent;
 
+import androidx.annotation.Nullable;
 
 import com.google.gson.*;
 import com.google.zxing.integration.android.IntentIntegrator;
@@ -54,6 +55,10 @@ public class MainActivity extends Activity {
     private final Queue<ScreenshotJob> screenshotQueue=new ArrayDeque<>();
     private Runnable pollRunnable;
     private boolean screenshotBusy=false;
+    private String activeScreenshotRequestId=null;
+    private Runnable screenshotTimeout=null;
+    private long lastSourceRefresh=0;
+    private int sourceCursor=0;
     private static class Pending { String type, context; Pending(String t,String c){type=t;context=c;} }
     private static class ScreenshotJob { String source,key; ScreenshotJob(String s,String k){source=s;key=k;} }
 
@@ -145,13 +150,13 @@ public class MainActivity extends Activity {
     private void disconnect(){stopPolling();connected=false;pending.clear();if(ws!=null)ws.close();connectButton.setText("HUBUNGKAN");setStatus("● Terputus",red);}
     private void setStatus(String s,int color){status.setText(s);status.setTextColor(color);}
     private void send(String type,JsonObject data){send(type,data,null);}
-    private void send(String type,JsonObject data,String context){
-        if(ws==null||!ws.isOpen()||!connected){toast("Belum terhubung ke OBS.");return;}
+    private String send(String type,JsonObject data,String context){
+        if(ws==null||!ws.isOpen()||!connected)return null;
         String id="kremote-"+(requestNo++);
         JsonObject rd=new JsonObject();rd.addProperty("requestType",type);rd.addProperty("requestId",id);rd.add("requestData",data==null?new JsonObject():data);
         JsonObject packet=new JsonObject();packet.addProperty("op",6);packet.add("d",rd);
         pending.put(id,new Pending(type,context));
-        try{ws.send(packet.toString());}catch(Exception e){pending.remove(id);toast("Gagal mengirim "+type);}
+        try{ws.send(packet.toString());return id;}catch(Exception e){pending.remove(id);return null;}
     }
     private void handleMessage(String msg){
         try{
@@ -171,6 +176,7 @@ public class MainActivity extends Activity {
                 refreshAll();send("GetStudioModeEnabled",new JsonObject());startPolling();
             }else if(op==7){
                 String id=d.has("requestId")?d.get("requestId").getAsString():"";Pending p=pending.remove(id);if(p==null)return;
+                if(id.equals(activeScreenshotRequestId)) finishScreenshotRequest();
                 JsonObject st=d.has("requestStatus")?d.getAsJsonObject("requestStatus"):new JsonObject();
                 if(!st.has("result")||!st.get("result").getAsBoolean()){
                     String why=st.has("comment")?st.get("comment").getAsString():"OBS menolak perintah";
@@ -244,20 +250,34 @@ public class MainActivity extends Activity {
         GridLayout.LayoutParams lp=new GridLayout.LayoutParams();lp.width=0;lp.columnSpec=GridLayout.spec(GridLayout.UNDEFINED,1f);lp.setMargins(dp(2),dp(2),dp(2),dp(2));grid.addView(tile,lp);
         sourceImages.put(key,image);sourceNames.put(key,source);queueScreenshot(source,key);
     }
-    private void queueScreenshot(String source,String key){if(source==null||source.isEmpty())return;screenshotQueue.add(new ScreenshotJob(source,key));dispatchScreenshot();}
+    private void queueScreenshot(String source,String key){
+        if(source==null||source.isEmpty()||!connected)return;
+        // Keep at most one queued refresh per view; never let old polling cycles accumulate.
+        for(ScreenshotJob j:screenshotQueue)if(j.key.equals(key))return;
+        screenshotQueue.add(new ScreenshotJob(source,key));dispatchScreenshot();
+    }
     private void dispatchScreenshot(){
         if(screenshotBusy||!connected||screenshotQueue.isEmpty())return;
         ScreenshotJob job=screenshotQueue.poll();if(job==null)return;screenshotBusy=true;
-        JsonObject q=new JsonObject();q.addProperty("sourceName",job.source);q.addProperty("imageFormat","jpg");q.addProperty("imageWidth",320);q.addProperty("imageHeight",180);q.addProperty("imageCompressionQuality",55);
-        send("GetSourceScreenshot",q,job.key);
-        main.postDelayed(()->{if(screenshotBusy){screenshotBusy=false;dispatchScreenshot();}},2200);
+        JsonObject q=new JsonObject();q.addProperty("sourceName",job.source);q.addProperty("imageFormat","jpg");q.addProperty("imageWidth",240);q.addProperty("imageHeight",135);q.addProperty("imageCompressionQuality",40);
+        activeScreenshotRequestId=send("GetSourceScreenshot",q,job.key);
+        if(activeScreenshotRequestId==null){finishScreenshotRequest();return;}
+        screenshotTimeout=()->{
+            if(activeScreenshotRequestId!=null){pending.remove(activeScreenshotRequestId);finishScreenshotRequest();}
+        };
+        main.postDelayed(screenshotTimeout,6000);
+    }
+    private void finishScreenshotRequest(){
+        if(screenshotTimeout!=null)main.removeCallbacks(screenshotTimeout);
+        screenshotTimeout=null;activeScreenshotRequestId=null;screenshotBusy=false;
+        if(connected)main.postDelayed(this::dispatchScreenshot,250);
     }
     private void showScreenshot(String key,String data){
         try{
             if(data==null||data.isEmpty())return;int comma=data.indexOf(',');String b64=comma>=0?data.substring(comma+1):data;
             byte[] bytes=Base64.decode(b64,Base64.DEFAULT);Bitmap bitmap=BitmapFactory.decodeByteArray(bytes,0,bytes.length);if(bitmap==null)return;
             main.post(()->{ImageView target;if("__PREVIEW__".equals(key))target=previewImage;else if("__PROGRAM__".equals(key))target=programImage;else target=sourceImages.get(key);if(target!=null)target.setImageBitmap(bitmap);});
-        }catch(Exception ignored){}finally{main.post(()->{screenshotBusy=false;dispatchScreenshot();});}
+        }catch(Exception ignored){}
     }
     private void handleEvent(JsonObject d){
         String type=getString(d,"eventType");JsonObject e=d.has("eventData")?d.getAsJsonObject("eventData"):new JsonObject();
@@ -339,15 +359,21 @@ public class MainActivity extends Activity {
         if(polling)return;polling=true;
         pollRunnable=new Runnable(){@Override public void run(){
             if(!polling||!connected)return;
-            screenshotQueue.clear();
+            // Monitors are refreshed first. Source thumbnails are refreshed slowly and round-robin.
             if(!currentPreview.isEmpty())queueScreenshot(currentPreview,"__PREVIEW__");
             if(!currentProgram.isEmpty())queueScreenshot(currentProgram,"__PROGRAM__");
-            for(Map.Entry<String,String> e:new ArrayList<>(sourceNames.entrySet()))queueScreenshot(e.getValue(),e.getKey());
-            main.postDelayed(this,5000);
+            long now=System.currentTimeMillis();
+            List<String> keys=new ArrayList<>(sourceNames.keySet());
+            if(!keys.isEmpty() && now-lastSourceRefresh>=15000){
+                if(sourceCursor>=keys.size())sourceCursor=0;
+                String key=keys.get(sourceCursor++);String src=sourceNames.get(key);
+                queueScreenshot(src,key);lastSourceRefresh=now;
+            }
+            main.postDelayed(this,10000);
         }};
         main.post(pollRunnable);
     }
-    private void stopPolling(){polling=false;if(pollRunnable!=null)main.removeCallbacks(pollRunnable);screenshotQueue.clear();screenshotBusy=false;}
+    private void stopPolling(){polling=false;if(pollRunnable!=null)main.removeCallbacks(pollRunnable);screenshotQueue.clear();if(activeScreenshotRequestId!=null)pending.remove(activeScreenshotRequestId);finishScreenshotRequest();}
     private void parseQr(String raw){
         try{
             String s=raw.trim();
@@ -356,7 +382,7 @@ public class MainActivity extends Activity {
             toast("Data QR dimasukkan. Tekan HUBUNGKAN.");
         }catch(Exception e){toast("Format QR tidak dikenali; isi IP dan password secara manual.");}
     }
-    @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
+    @Override protected void onActivityResult(int requestCode,int resultCode,@Nullable Intent data){
         IntentResult result=IntentIntegrator.parseActivityResult(requestCode,resultCode,data);
         if(result!=null&&result.getContents()!=null){parseQr(result.getContents());return;}
         super.onActivityResult(requestCode,resultCode,data);
