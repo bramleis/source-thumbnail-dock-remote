@@ -52,7 +52,7 @@ public class MainActivity extends Activity {
     private final Map<String,Button> muteButtons=new HashMap<>();
     private final List<String> audioInputs=new ArrayList<>();
     private final Queue<ScreenshotJob> screenshotQueue=new ArrayDeque<>();
-    private Runnable pollRunnable;
+    private Runnable pollRunnable;\n    private Runnable keepAliveRunnable;\n    private long lastSocketMessage=0;
     private boolean screenshotBusy=false;
     private String activeScreenshotRequestId=null;
     private Runnable screenshotTimeout=null;
@@ -75,11 +75,12 @@ public class MainActivity extends Activity {
         if(bold)t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return t;
     }
     private Button button(String s,int color){
-        Button b=new Button(this);b.setText(s);b.setTextSize(11);b.setAllCaps(false);b.setTextColor(Color.WHITE);b.setPadding(dp(5),0,dp(5),0);b.setBackground(shape(color,0));return b;
+        Button b=new Button(this);b.setText(s);b.setTextSize(11);b.setAllCaps(false);b.setTextColor(Color.WHITE);b.setPadding(dp(7),0,dp(7),0);b.setMinHeight(dp(36));b.setMinimumHeight(dp(36));b.setMinWidth(0);b.setMinimumWidth(0);
+        b.setBackground(shape(color,0));return b;
     }
     private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);return l;}
     private LinearLayout row(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.HORIZONTAL);l.setGravity(Gravity.CENTER_VERTICAL);return l;}
-    private void section(LinearLayout parent,String title){TextView t=text(title,16,true);t.setPadding(0,dp(13),0,dp(5));parent.addView(t);}
+    private void section(LinearLayout parent,String title){TextView t=text(title,16,true);t.setPadding(0,dp(9),0,dp(4));parent.addView(t);}
     private void buildUi(){
         ScrollView scroll=new ScrollView(this);root=column();root.setPadding(dp(12),dp(10),dp(12),dp(24));root.setBackgroundColor(bgColor);scroll.addView(root);setContentView(scroll);
         root.addView(text("KOMSOS THUMBNAIL REMOTE",21,true));
@@ -124,7 +125,7 @@ public class MainActivity extends Activity {
         root.addView(text("Gambar adalah screenshot berkala, bukan video kontinu. HP dan laptop OBS harus berada pada jaringan yang sama. Port standar OBS WebSocket: 4455.",10,false));
     }
     private LinearLayout monitorCard(String title){LinearLayout c=column();c.setPadding(dp(6),dp(6),dp(6),dp(6));c.setBackground(shape(panel,0xffd9e0d8));TextView h=text(title,11,true);h.setTextColor(blue);c.addView(h);return c;}
-    private ImageView monitorImage(){ImageView im=new ImageView(this);im.setBackgroundColor(0xff111713);im.setScaleType(ImageView.ScaleType.CENTER_CROP);im.setLayoutParams(new LinearLayout.LayoutParams(-1,dp(110)));return im;}
+    private ImageView monitorImage(){ImageView im=new ImageView(this);im.setBackgroundColor(0xff111713);im.setScaleType(ImageView.ScaleType.CENTER_CROP);im.setLayoutParams(new LinearLayout.LayoutParams(-1,dp(94)));return im;}
     private void fullscreen(ImageView source,String title){
         if(source.getDrawable()==null){toast("Gambar monitor belum tersedia.");return;}
         ImageView big=new ImageView(this);big.setImageDrawable(source.getDrawable());big.setBackgroundColor(Color.BLACK);big.setAdjustViewBounds(true);big.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -172,7 +173,7 @@ public class MainActivity extends Activity {
                 JsonObject out=new JsonObject();out.addProperty("op",1);out.add("d",identify);ws.send(out.toString());
             }else if(op==2){
                 connected=true;main.post(()->{setStatus("● OBS TERHUBUNG",green);connectButton.setText("PUTUSKAN");});
-                refreshAll();send("GetStudioModeEnabled",new JsonObject());startPolling();
+                refreshAll();send("GetStudioModeEnabled",new JsonObject());startPolling();startKeepAlive();
             }else if(op==7){
                 String id=d.has("requestId")?d.get("requestId").getAsString():"";Pending p=pending.remove(id);if(p==null)return;
                 if(id.equals(activeScreenshotRequestId)) finishScreenshotRequest();
@@ -241,9 +242,9 @@ public class MainActivity extends Activity {
         String source=getString(item,"sourceName");int itemId=item.has("sceneItemId")?item.get("sceneItemId").getAsInt():-1;
         boolean enabled=item.has("sceneItemEnabled")&&item.get("sceneItemEnabled").getAsBoolean();String key=scene+"::"+itemId;
         LinearLayout tile=column();tile.setPadding(dp(3),dp(3),dp(3),dp(3));tile.setBackground(shape(0xfff0f3ef,0xffdce2dc));
-        ImageView image=monitorImage();image.setLayoutParams(new LinearLayout.LayoutParams(-1,dp(64)));tile.addView(image);
-        TextView title=text(source,10,true);title.setMaxLines(2);tile.addView(title);
-        CheckBox visible=new CheckBox(this);visible.setText("Tampil");visible.setTextSize(9);visible.setChecked(enabled);tile.addView(visible);
+        ImageView image=monitorImage();image.setLayoutParams(new LinearLayout.LayoutParams(-1,dp(50)));tile.addView(image);
+        TextView title=text(source,9,true);title.setMaxLines(2);title.setPadding(dp(3),dp(2),dp(3),dp(2));tile.addView(title);
+        CheckBox visible=new CheckBox(this);visible.setText("Tampil");visible.setTextSize(9);visible.setMinHeight(dp(28));visible.setMinimumHeight(dp(28));visible.setPadding(0,0,0,0);visible.setChecked(enabled);tile.addView(visible);
         visible.setOnCheckedChangeListener((v,on)->{JsonObject q=new JsonObject();q.addProperty("sceneName",scene);q.addProperty("sceneItemId",itemId);q.addProperty("sceneItemEnabled",on);send("SetSceneItemEnabled",q);});
         tile.setOnClickListener(v->{JsonObject q=new JsonObject();q.addProperty("sceneName",scene);send("SetCurrentPreviewScene",q);toast("Scene "+scene+" disiapkan di Preview.");});
         GridLayout.LayoutParams lp=new GridLayout.LayoutParams();lp.width=0;lp.columnSpec=GridLayout.spec(GridLayout.UNDEFINED,1f);lp.setMargins(dp(2),dp(2),dp(2),dp(2));grid.addView(tile,lp);
@@ -253,7 +254,9 @@ public class MainActivity extends Activity {
         if(source==null||source.isEmpty()||!connected)return;
         // Keep at most one queued refresh per view; never let old polling cycles accumulate.
         for(ScreenshotJob j:screenshotQueue)if(j.key.equals(key))return;
-        screenshotQueue.add(new ScreenshotJob(source,key));dispatchScreenshot();
+        ScreenshotJob job=new ScreenshotJob(source,key);
+        if(key.startsWith("__"))screenshotQueue.addFirst(job);else screenshotQueue.addLast(job);
+        dispatchScreenshot();
     }
     private void dispatchScreenshot(){
         if(screenshotBusy||!connected||screenshotQueue.isEmpty())return;
@@ -304,10 +307,10 @@ public class MainActivity extends Activity {
     }
     private void addAudioControl(String name){
         LinearLayout row=row();row.setPadding(0,dp(3),0,dp(3));
-        TextView label=text(name,10,true);label.setMaxLines(1);row.addView(label,new LinearLayout.LayoutParams(dp(105),-2));
-        ProgressBar meter=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);meter.setMax(100);meter.setProgress(0);row.addView(meter,new LinearLayout.LayoutParams(0,dp(13),1));
+        TextView label=text(name,10,true);label.setMaxLines(1);row.addView(label,new LinearLayout.LayoutParams(dp(88),-2));
+        ProgressBar meter=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);meter.setMax(100);meter.setProgress(0);row.addView(meter,new LinearLayout.LayoutParams(0,dp(10),1));
         Button mute=button("MUTE",amber);row.addView(mute);
-        SeekBar volume=new SeekBar(this);volume.setMax(100);volume.setProgress(100);row.addView(volume,new LinearLayout.LayoutParams(dp(105),dp(30)));
+        SeekBar volume=new SeekBar(this);volume.setMax(100);volume.setProgress(100);row.addView(volume,new LinearLayout.LayoutParams(dp(86),dp(28)));
         meterBars.put(name,meter);muteButtons.put(name,mute);volumeSliders.put(name,volume);mute.setText(muteStates.getOrDefault(name,false)?"UNMUTE":"MUTE");
         mute.setOnClickListener(v->{boolean next=!muteStates.getOrDefault(name,false);JsonObject q=new JsonObject();q.addProperty("inputName",name);q.addProperty("inputMuted",next);send("SetInputMute",q);muteStates.put(name,next);mute.setText(next?"UNMUTE":"MUTE");});
         volume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
@@ -332,11 +335,24 @@ public class MainActivity extends Activity {
         String[] keys={"inputLevelsMul","inputLevels","inputLevelsDb"};
         for(String key:keys)if(input.has(key)&&input.get(key).isJsonArray()){
             JsonArray channels=input.getAsJsonArray(key);double max=0;
-            for(JsonElement channel:channels)if(channel.isJsonArray())for(JsonElement val:channel.getAsJsonArray()){
-                try{double x=val.getAsDouble();if(key.endsWith("Db")||key.equals("inputLevels"))x=Math.pow(10,x/20.0);max=Math.max(max,x);}catch(Exception ignored){}
+            for(JsonElement channel:channels){
+                if(channel.isJsonArray()){
+                    for(JsonElement val:channel.getAsJsonArray()){
+                        try{
+                            double x=val.getAsDouble();
+                            if(key.endsWith("Db")||key.equals("inputLevels"))x=Math.pow(10.0,x/20.0);
+                            max=Math.max(max,x);
+                        }catch(Exception ignored){}
+                    }
+                }else if(channel.isJsonObject()){
+                    JsonObject ch=channel.getAsJsonObject();
+                    String[] fields={"inputPeakMul","inputMagnitudeMul","inputPeak","inputMagnitude"};
+                    for(String f:fields)if(ch.has(f))try{max=Math.max(max,ch.get(f).getAsDouble());}catch(Exception ignored){}
+                }
             }
             return max;
-        }return 0;
+        }
+        return 0;
     }
     private void muteAll(){
         if(audioInputs.isEmpty()){toast("Daftar input audio belum tersedia.");return;}
@@ -363,23 +379,61 @@ public class MainActivity extends Activity {
             if(!currentProgram.isEmpty())queueScreenshot(currentProgram,"__PROGRAM__");
             long now=System.currentTimeMillis();
             List<String> keys=new ArrayList<>(sourceNames.keySet());
-            if(!keys.isEmpty() && now-lastSourceRefresh>=15000){
+            if(!keys.isEmpty() && now-lastSourceRefresh>=12000){
                 if(sourceCursor>=keys.size())sourceCursor=0;
                 String key=keys.get(sourceCursor++);String src=sourceNames.get(key);
                 queueScreenshot(src,key);lastSourceRefresh=now;
             }
-            main.postDelayed(this,10000);
+            main.postDelayed(this,6000);
         }};
         main.post(pollRunnable);
     }
-    private void stopPolling(){polling=false;if(pollRunnable!=null)main.removeCallbacks(pollRunnable);screenshotQueue.clear();if(activeScreenshotRequestId!=null)pending.remove(activeScreenshotRequestId);finishScreenshotRequest();}
+    private void startKeepAlive(){
+        if(keepAliveRunnable!=null)main.removeCallbacks(keepAliveRunnable);
+        keepAliveRunnable=new Runnable(){@Override public void run(){
+            if(!connected||ws==null||!ws.isOpen())return;
+            // A lightweight request prevents idle Wi-Fi/router sessions from expiring.
+            send("GetVersion",new JsonObject());
+            main.postDelayed(this,20000);
+        }};
+        main.postDelayed(keepAliveRunnable,15000);
+    }
+    private void stopPolling(){if(keepAliveRunnable!=null)main.removeCallbacks(keepAliveRunnable);polling=false;if(pollRunnable!=null)main.removeCallbacks(pollRunnable);screenshotQueue.clear();if(activeScreenshotRequestId!=null)pending.remove(activeScreenshotRequestId);finishScreenshotRequest();}
     private void parseQr(String raw){
         try{
-            String s=raw.trim();
-            if(s.startsWith("{")){JsonObject j=JsonParser.parseString(s).getAsJsonObject();if(j.has("host"))hostInput.setText(j.get("host").getAsString());if(j.has("port"))portInput.setText(j.get("port").getAsString());if(j.has("password"))passwordInput.setText(j.get("password").getAsString());}
-            else{if(s.startsWith("ws://"))s=s.substring(5);else if(s.startsWith("obsws://"))s=s.substring(8);String authority=s.split("/",2)[0];String[] hp=authority.split(":");hostInput.setText(hp[0]);if(hp.length>1)portInput.setText(hp[1]);if(s.contains("password=")){String pw=s.substring(s.indexOf("password=")+9).split("[& ]",2)[0];passwordInput.setText(URLDecoder.decode(pw,"UTF-8"));}}
-            toast("Data QR dimasukkan. Tekan HUBUNGKAN.");
-        }catch(Exception e){toast("Format QR tidak dikenali; isi IP dan password secara manual.");}
+            String value=raw==null?"":raw.trim();
+            if(value.isEmpty()) throw new IllegalArgumentException("QR kosong");
+            if(value.startsWith("{")){
+                JsonObject j=JsonParser.parseString(value).getAsJsonObject();
+                if(j.has("host")) hostInput.setText(j.get("host").getAsString());
+                if(j.has("port")) portInput.setText(j.get("port").getAsString());
+                if(j.has("password")) passwordInput.setText(j.get("password").getAsString());
+            } else if(value.startsWith("obsws://") || value.startsWith("ws://") || value.startsWith("wss://")) {
+                java.net.URI uri=new java.net.URI(value);
+                if(uri.getHost()==null) throw new IllegalArgumentException("Host QR tidak ditemukan");
+                hostInput.setText(uri.getHost());
+                if(uri.getPort()>0) portInput.setText(String.valueOf(uri.getPort()));
+                // QR OBS WebSocket menaruh password pada path: obsws://HOST:PORT/PASSWORD
+                String path=uri.getRawPath();
+                if(path!=null && path.length()>1){
+                    String token=path.substring(1).split("/",2)[0];
+                    passwordInput.setText(URLDecoder.decode(token,"UTF-8"));
+                }
+                String query=uri.getRawQuery();
+                if(query!=null){
+                    for(String part:query.split("&")){
+                        String[] kv=part.split("=",2);
+                        if(kv.length==2 && "password".equalsIgnoreCase(kv[0]))
+                            passwordInput.setText(URLDecoder.decode(kv[1],"UTF-8"));
+                    }
+                }
+            } else {
+                throw new IllegalArgumentException("Format QR tidak dikenal");
+            }
+            toast("QR OBS terbaca. Periksa alamat dan tekan HUBUNGKAN.");
+        }catch(Exception e){
+            toast("QR tidak dapat dibaca. Pastikan QR berasal dari OBS WebSocket Connect Info.");
+        }
     }
     @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
         IntentResult result=IntentIntegrator.parseActivityResult(requestCode,resultCode,data);
